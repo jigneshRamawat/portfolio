@@ -1,84 +1,84 @@
-// Server/routes/postRoutes.js
 import express from "express";
 import multer from "multer";
 import fs from "fs";
+import { v2 as cloudinary } from "cloudinary";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
 import Post from "../models/Post.js";
-import cloudinary from "../config/cloudinary.js";
-import path from "path";
 
 const router = express.Router();
 
-// Multer temp storage (keeps files in uploads/ locally, will be deleted after upload)
-const upload = multer({ dest: "uploads/" });
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.CLOUD_API_KEY,
+  api_secret: process.env.CLOUD_API_SECRET,
+});
 
-// CREATE
-router.post("/", upload.single("image"), async (req, res) => {
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "posts_uploads",
+    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+  },
+});
+
+const upload = multer({ storage });
+
+router.post("/create", upload.single("image"), async (req, res) => {
   try {
-    // if file exists upload to cloudinary
-    let imageData = null;
-    if (req.file) {
-      const result = await cloudinary.uploader.upload(req.file.path, { folder: "posts" });
-      imageData = { public_id: result.public_id, url: result.secure_url };
-      fs.unlinkSync(req.file.path);
-    }
+    const { title, description } = req.body;
+    const imageUrl = req.file?.path || null;
+    const publicId = req.file?.filename || null;
 
-    const newPost = await Post.create({
-      title: req.body.title,
-      description: req.body.description,
-      image: imageData
+    const newPost = new Post({
+      title,
+      description,
+      image: { url: imageUrl, public_id: publicId },
     });
 
-    res.status(201).json(newPost);
+    await newPost.save();
+    res.status(201).json({ success: true, message: "Post created successfully!", newPost });
   } catch (err) {
-    console.error("Create Error:", err);
-    res.status(500).json({ message: "Failed to create post", error: err.message });
+    res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 });
 
-// READ ALL
 router.get("/", async (req, res) => {
   try {
     const posts = await Post.find().sort({ createdAt: -1 });
     res.json(posts);
   } catch (err) {
-    console.error("Fetch Error:", err);
     res.status(500).json({ message: "Failed to fetch posts", error: err.message });
   }
 });
 
-// UPDATE
 router.put("/:id", upload.single("image"), async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    // If new image uploaded, delete old from Cloudinary then upload new
     if (req.file) {
-      if (post.image && post.image.public_id) {
+      if (post.image?.public_id) {
         try {
           await cloudinary.uploader.destroy(post.image.public_id);
-        } catch (e) {
-          console.warn("Cloudinary delete warning:", e);
-        }
+        } catch (e) {}
       }
-      const result = await cloudinary.uploader.upload(req.file.path, { folder: "posts" });
-      post.image = { public_id: result.public_id, url: result.secure_url };
-      fs.unlinkSync(req.file.path);
+
+      post.image = {
+        url: req.file.path,
+        public_id: req.file.filename,
+      };
     }
 
-    // update other fields
     post.title = req.body.title ?? post.title;
     post.description = req.body.description ?? post.description;
 
-    const updated = await post.save();
-    res.json(updated);
+    const updatedPost = await post.save();
+    res.json({ success: true, message: "Post updated successfully", updatedPost });
   } catch (err) {
-    console.error("Update Error:", err);
     res.status(500).json({ message: "Failed to update post", error: err.message });
   }
 });
 
-// DELETE
 router.delete("/:id", async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
@@ -87,15 +87,12 @@ router.delete("/:id", async (req, res) => {
     if (post.image?.public_id) {
       try {
         await cloudinary.uploader.destroy(post.image.public_id);
-      } catch (e) {
-        console.warn("Cloudinary delete warning:", e);
-      }
+      } catch (e) {}
     }
 
     await post.deleteOne();
-    res.json({ message: "Post deleted" });
+    res.json({ success: true, message: "Post deleted successfully" });
   } catch (err) {
-    console.error("Delete Error:", err);
     res.status(500).json({ message: "Failed to delete post", error: err.message });
   }
 });
