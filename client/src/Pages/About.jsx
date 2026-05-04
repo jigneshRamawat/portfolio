@@ -5,10 +5,7 @@ import myPhoto from "../img/my3.jpg";
 const About = () => {
     const { theme, data, setData } = useContext(userContext);
 
-    useEffect(() => {
-        fetchData();
-    }, []);
-
+  
 
 
     return (
