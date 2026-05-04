@@ -1,7 +1,7 @@
 import React, { useContext, useEffect } from 'react'
 import { userContext } from '../Context/ContextPage'
 import myPhoto from "../img/my3.jpg";
-import Api from "../Api"
+
 const About = () => {
     const { theme, data, setData } = useContext(userContext);
 
@@ -9,10 +9,7 @@ const About = () => {
         fetchData();
     }, []);
 
-    const fetchData = async () => {
-        const response = await Api.get("/posts")
-        setData(response.data);
-    }
+
 
     return (
         <div>
